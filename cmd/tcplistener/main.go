@@ -1,42 +1,12 @@
 package main
 
 import (
-	"bufio"
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
+
+	"github.com/rohit-Jung/http-protocol/internal/request"
 )
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	out := make(chan string, 1)
-	reader := bufio.NewReader(f)
-
-	go func() {
-		defer f.Close()
-		defer close(out)
-
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				if len(line) > 0 {
-					out <- line
-				}
-
-				if errors.Is(err, io.EOF) {
-					return
-				}
-
-				return
-			}
-
-			out <- line
-		}
-	}()
-
-	return out
-}
 
 func main() {
 	net, err := net.Listen("tcp", ":42069")
@@ -51,13 +21,17 @@ func main() {
 		conn, err := net.Accept()
 		if err != nil {
 			log.Fatal("Error while accepting")
-			return
 		}
 
-		lines := getLinesChannel(conn)
-		for line := range lines {
-			fmt.Printf("%s", line)
+		req, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Fatal("Error while accepting")
 		}
+
+		fmt.Printf("Request line:\n")
+		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
+		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
+		fmt.Printf("- Version: %s\n", req.RequestLine.HTTPVersion)
 	}
 }
 
@@ -72,3 +46,32 @@ func main() {
 // }
 //
 // str += string(data)
+
+// func getLinesChannel(f io.ReadCloser) <-chan string {
+// 	out := make(chan string, 1)
+// 	reader := bufio.NewReader(f)
+//
+// 	go func() {
+// 		defer f.Close()
+// 		defer close(out)
+//
+// 		for {
+// 			line, err := reader.ReadString('\n')
+// 			if err != nil {
+// 				if len(line) > 0 {
+// 					out <- line
+// 				}
+//
+// 				if errors.Is(err, io.EOF) {
+// 					return
+// 				}
+//
+// 				return
+// 			}
+//
+// 			out <- line
+// 		}
+// 	}()
+//
+// 	return out
+// }
