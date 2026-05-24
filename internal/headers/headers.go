@@ -16,17 +16,17 @@ func NewHeaders() Headers {
 const CRLF = "\r\n"
 
 var (
-	errDidNotFoundCRLF           = fmt.Errorf("ERORR: Did not found CRLF")
 	errFieldLineKeyHasWhiteSpace = fmt.Errorf("ERROR: Field line key shouldn't contain whitespace")
 	errMalformedFieldLine        = fmt.Errorf("ERROR: Got malformed Field Line")
 	errInvalidCharactersFound    = fmt.Errorf("ERROR: Invalid Characters found in field name")
+	errMissingEndOfHeader        = fmt.Errorf("ERORR: Missing End of Header")
 )
 
-const validCharactersPattern = "^[a-zA-Z0-9 !#$%&'*+\\-.\\^_`|~]*$"
+const validCharactersPattern = "^[a-zA-Z0-9!#$%&'*+\\-.\\^_`|~]*$"
 
 func parseSingleFieldLine(fieldLine []byte) (string, string, error) {
+	fmt.Println("Filed line", string(fieldLine))
 	fieldLineParts := bytes.SplitN(fieldLine, []byte(":"), 2)
-
 	if len(fieldLineParts) != 2 {
 		return "", "", errMalformedFieldLine
 	}
@@ -50,12 +50,12 @@ func parseSingleFieldLine(fieldLine []byte) (string, string, error) {
 	return strings.ToLower(cleanedFieldName), cleanedFieldVal, nil
 }
 
-func (h Headers) mutateHeaders(fieldName string, fieldValue string) {
-	val, ok := h[fieldName]
-	if ok {
-		h[fieldName] = val + "," + fieldValue
+func (h Headers) MutateHeaders(fieldName string, fieldValue string) {
+	name := strings.ToLower(fieldName)
+	if val, ok := h[name]; ok {
+		h[name] = val + "," + fieldValue
 	} else {
-		h[fieldName] = fieldValue
+		h[name] = fieldValue
 	}
 }
 
@@ -66,11 +66,12 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 	for {
 		indexOfCrlf := bytes.Index(data[bytesRead:], []byte(CRLF))
 		if indexOfCrlf == -1 {
-			return bytesRead, doneParsing, errDidNotFoundCRLF
+			break
 		}
 
 		// it found it at start itself
 		if indexOfCrlf == 0 {
+			bytesRead += len(CRLF)
 			doneParsing = true
 			break
 		}
@@ -81,7 +82,7 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			return bytesRead, doneParsing, err
 		}
 
-		h.mutateHeaders(fieldName, fieldValue)
+		h.MutateHeaders(fieldName, fieldValue)
 		bytesRead += indexOfCrlf + len([]byte(CRLF))
 	}
 
