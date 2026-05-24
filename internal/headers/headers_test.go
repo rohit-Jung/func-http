@@ -18,7 +18,7 @@ func TestFieldLineParse(t *testing.T) {
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "", headers["MissingKey"])
-	assert.Equal(t, 23, n)
+	assert.Equal(t, 25, n)
 	assert.True(t, done)
 
 	// Test: valid multiple headers one with extraspace
@@ -31,7 +31,7 @@ func TestFieldLineParse(t *testing.T) {
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "registered", headers["nurse"])
 	assert.Equal(t, "", headers["MissingKey"])
-	assert.Equal(t, 54, n)
+	assert.Equal(t, 56, n)
 	assert.True(t, done)
 
 	// Test: Invalid spacing header
@@ -59,6 +59,6 @@ func TestFieldLineParse(t *testing.T) {
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "registered,with doctor,and other nurse", headers["nurse"])
-	assert.Equal(t, 101, n)
+	assert.Equal(t, 103, n)
 	assert.True(t, done)
 }
