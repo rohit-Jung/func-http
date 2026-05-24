@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 
 	"github.com/rohit-Jung/http-protocol/internal/request"
 )
@@ -32,6 +33,11 @@ func main() {
 		fmt.Printf("- Method: %s\n", req.RequestLine.Method)
 		fmt.Printf("- Target: %s\n", req.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %s\n", req.RequestLine.HTTPVersion)
+
+		fmt.Printf("Headers: \n")
+		for key, val := range req.Headers {
+			fmt.Printf("- %s: %s\n", strings.ToUpper(key), strings.ToUpper(val))
+		}
 	}
 }
 

@@ -7,14 +7,17 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/rohit-Jung/http-protocol/internal/headers"
 )
 
 type State string
 
 const (
-	StateInit  State = "init"
-	StateDone  State = "done"
-	StateError State = "error"
+	StateInit           State = "init"
+	StateDone           State = "done"
+	StateError          State = "error"
+	StateParsingHeaders State = "parsingHeaders"
 )
 
 type RequestLine struct {
@@ -25,7 +28,7 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine *RequestLine
-	Headers     map[string]string
+	Headers     headers.Headers
 	Body        string
 	State       State
 }
@@ -38,6 +41,7 @@ var (
 	errMalformedHTTPMethod    = fmt.Errorf("[MALFORMED] http method is malformed")
 	errRequestState           = fmt.Errorf("[STATE ERROR] error in request state")
 	errUnsupportedHTTPVersion = fmt.Errorf("[UNSUPPORTED] http version currently not supported")
+	errIncompleteRequest      = fmt.Errorf("[MALFORMED] the request was incomplete")
 )
 
 func parseRequestLine(buf []byte) (*RequestLine, int, error) {
@@ -80,7 +84,8 @@ func parseRequestLine(buf []byte) (*RequestLine, int, error) {
 
 func newRequest() *Request {
 	return &Request{
-		State: StateInit,
+		State:   StateInit,
+		Headers: headers.NewHeaders(),
 	}
 }
 
@@ -88,24 +93,40 @@ func (r *Request) parse(buf []byte) (int, error) {
 	readBytes := 0
 dance:
 	for {
+		currentData := buf[readBytes:]
 		switch r.State {
 		case StateError:
 			return 0, errRequestState
 
+		case StateParsingHeaders:
+			headersBytesRead, doneParsingHeaders, err := r.Headers.Parse(currentData)
+			if err != nil {
+				return 0, err
+			}
+
+			if headersBytesRead == 0 {
+				break dance
+			}
+
+			readBytes += headersBytesRead
+			if doneParsingHeaders {
+				r.State = StateDone
+			}
+
 		case StateInit:
-			rl, n, err := parseRequestLine(buf[readBytes:])
+			requestLime, rlParsedBytes, err := parseRequestLine(currentData)
 			if err != nil {
 				r.State = StateError
 				return 0, err
 			}
 
-			if n == 0 {
+			if rlParsedBytes == 0 {
 				break dance
 			}
 
-			r.RequestLine = rl
-			readBytes += n
-			r.State = StateDone
+			r.RequestLine = requestLime
+			readBytes += rlParsedBytes
+			r.State = StateParsingHeaders
 
 		case StateDone:
 			break dance
@@ -126,24 +147,31 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 	for !req.done() {
 		bytesRead, err := reader.Read(buf[bufLen:])
+
+		if bytesRead > 0 {
+			// parsed till read ones
+			bufLen += bytesRead
+			bytesParsed, err := req.parse(buf[:bufLen])
+			if err != nil {
+				return nil, err
+			}
+
+			// copy back whats not parsed and start from where parsing was stopped
+			copy(buf, buf[bytesParsed:bufLen])
+			bufLen -= bytesParsed
+		}
+
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				if !req.done() {
+					return nil, errIncompleteRequest
+				}
+
 				break
 			}
 
 			return nil, err
 		}
-
-		// parsed till read ones
-		bufLen += bytesRead
-		bytesParsed, err := req.parse(buf[:bufLen])
-		if err != nil {
-			return nil, err
-		}
-
-		// copy back whats not parsed and start from where parsing was stopped
-		copy(buf, buf[bytesParsed:bufLen])
-		bufLen -= bytesParsed
 	}
 
 	return req, nil
