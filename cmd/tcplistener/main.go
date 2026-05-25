@@ -38,6 +38,9 @@ func main() {
 		for key, val := range req.Headers {
 			fmt.Printf("- %s: %s\n", strings.ToUpper(key), strings.ToUpper(val))
 		}
+
+		fmt.Printf("Body:\n")
+		fmt.Printf("%s", string(req.Body))
 	}
 }
 

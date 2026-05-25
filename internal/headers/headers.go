@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -13,19 +14,40 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	lowerCasedKey := strings.ToLower(key)
+	if value, ok := h[lowerCasedKey]; ok {
+		return value, ok
+	}
+
+	return "", false
+}
+
+func (h Headers) GetIntVal(key string, defaultVal int) int {
+	val, exists := h.Get(key)
+	if !exists {
+		return defaultVal
+	}
+
+	intVal, err := strconv.Atoi(val)
+	if err != nil {
+		return defaultVal
+	}
+
+	return intVal
+}
+
 const CRLF = "\r\n"
 
 var (
 	errFieldLineKeyHasWhiteSpace = fmt.Errorf("ERROR: Field line key shouldn't contain whitespace")
 	errMalformedFieldLine        = fmt.Errorf("ERROR: Got malformed Field Line")
 	errInvalidCharactersFound    = fmt.Errorf("ERROR: Invalid Characters found in field name")
-	errMissingEndOfHeader        = fmt.Errorf("ERORR: Missing End of Header")
 )
 
 const validCharactersPattern = "^[a-zA-Z0-9!#$%&'*+\\-.\\^_`|~]*$"
 
 func parseSingleFieldLine(fieldLine []byte) (string, string, error) {
-	fmt.Println("Filed line", string(fieldLine))
 	fieldLineParts := bytes.SplitN(fieldLine, []byte(":"), 2)
 	if len(fieldLineParts) != 2 {
 		return "", "", errMalformedFieldLine

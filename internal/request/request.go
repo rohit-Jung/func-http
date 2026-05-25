@@ -18,6 +18,7 @@ const (
 	StateDone           State = "done"
 	StateError          State = "error"
 	StateParsingHeaders State = "parsingHeaders"
+	StateParsingBody    State = "parsingBody"
 )
 
 type RequestLine struct {
@@ -29,7 +30,7 @@ type RequestLine struct {
 type Request struct {
 	RequestLine *RequestLine
 	Headers     headers.Headers
-	Body        string
+	Body        []byte
 	State       State
 }
 
@@ -86,8 +87,11 @@ func newRequest() *Request {
 	return &Request{
 		State:   StateInit,
 		Headers: headers.NewHeaders(),
+		Body:    []byte{},
 	}
 }
+
+const ContentLengthKey = "content-length"
 
 func (r *Request) parse(buf []byte) (int, error) {
 	readBytes := 0
@@ -97,6 +101,34 @@ dance:
 		switch r.State {
 		case StateError:
 			return 0, errRequestState
+
+		case StateParsingBody:
+			contentLength := r.Headers.GetIntVal(ContentLengthKey, 0)
+			if contentLength == 0 {
+				r.State = StateDone
+				break
+			}
+
+			remainingBodyBytes := contentLength - len(r.Body)
+			availableCurrentBuf := len(buf) - readBytes
+
+			// answer this why min ?
+			bytesToRead := min(remainingBodyBytes, availableCurrentBuf)
+
+			r.Body = append(r.Body, buf[readBytes:bytesToRead+readBytes]...)
+			readBytes += bytesToRead
+			if bytesToRead == 0 {
+				break dance
+			}
+
+			if len(r.Body) == contentLength {
+				r.State = StateDone
+			}
+
+			// this might not happen but still
+			if len(r.Body) > contentLength {
+				r.State = StateError
+			}
 
 		case StateParsingHeaders:
 			headersBytesRead, doneParsingHeaders, err := r.Headers.Parse(currentData)
@@ -110,7 +142,7 @@ dance:
 
 			readBytes += headersBytesRead
 			if doneParsingHeaders {
-				r.State = StateDone
+				r.State = StateParsingBody
 			}
 
 		case StateInit:
