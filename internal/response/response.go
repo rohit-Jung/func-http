@@ -15,6 +15,7 @@ const (
 	writerStateBody       writerState = "writerStateBody"
 	writerStateHeaders    writerState = "writerStateHeaders"
 	writerStateStatusLine writerState = "writerStateStatusLine"
+	writerStateTrailer    writerState = "writerStateTrailer"
 )
 
 type (
@@ -65,10 +66,17 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	header := headers.NewHeaders()
-	header["Content-Length"] = fmt.Sprint(contentLen)
-	header["Connection"] = "close"
-	header["Content-Type"] = "text/plain"
+	header.Set("Content-Length", fmt.Sprint(contentLen))
+	header.Set("Connection", "close")
+	header.Set("Content-Type", "text/plain")
 	return header
+}
+
+func GetChunkedEncodingHeaders() headers.Headers {
+	headers := GetDefaultHeaders(0)
+	headers.Delete("Content-Length")
+	headers.Set("Transfer-Encoding", "chunked")
+	return headers
 }
 
 func (w *Writer) WriteHeaders(headers headers.Headers) error {
@@ -95,6 +103,30 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 
 	n, err := w.writer.Write(p)
-	w.writerState = writerStateDone
 	return n, err
+}
+
+func (w *Writer) WriteChunkedBody(b []byte) (int, error) {
+	chunkHeader := fmt.Appendf(nil, "%x\r\n", len(b))
+
+	body := make([]byte, 0, len(chunkHeader)+len(b)+2)
+	body = append(body, chunkHeader...)
+	body = append(body, b...)
+	body = append(body, '\r', '\n')
+
+	return w.WriteBody(body)
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	bytesWritten, err := w.WriteBody([]byte("0\r\n"))
+	w.writerState = writerStateDone
+	return bytesWritten, err
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	w.writerState = writerStateHeaders
+	err := w.WriteHeaders(h)
+	w.writer.Write([]byte("\r\n"))
+	w.writerState = writerStateDone
+	return err
 }

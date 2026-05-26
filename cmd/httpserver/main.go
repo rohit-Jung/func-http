@@ -1,12 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
+	"github.com/rohit-Jung/http-protocol/internal/headers"
 	"github.com/rohit-Jung/http-protocol/internal/request"
 	"github.com/rohit-Jung/http-protocol/internal/response"
 	"github.com/rohit-Jung/http-protocol/internal/server"
@@ -62,7 +68,8 @@ func getHtml(statusCode response.StatusCode) string {
 func writeResponse(w response.Writer, statusCode response.StatusCode, message string) {
 	headers := response.GetDefaultHeaders(len(message))
 	w.WriteStatusLine(statusCode)
-	headers["Content-Type"] = "text/html"
+	headers.Replace("Content-Type", "text/html")
+
 	w.WriteHeaders(headers)
 	w.WriteBody([]byte(message))
 }
@@ -73,12 +80,61 @@ func handlePath(w response.Writer, req *request.Request) {
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
 		statusCode = response.StatusBadRequst
+		html := getHtml(statusCode)
+		writeResponse(w, statusCode, html)
+		return
 	case "/myproblem":
 		statusCode = response.StatusInternalServerError
+		html := getHtml(statusCode)
+		writeResponse(w, statusCode, html)
+		return
 	}
 
-	html := getHtml(statusCode)
-	writeResponse(w, statusCode, html)
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
+		target := req.RequestLine.RequestTarget[len("/httpbin"):]
+		endPoint := fmt.Sprintf("http://httpbin.org%s", target)
+
+		res, err := http.Get(endPoint)
+		if err != nil {
+			statusCode = response.StatusInternalServerError
+			html := getHtml(statusCode)
+			writeResponse(w, statusCode, html)
+		}
+
+		defer res.Body.Close()
+		chunkedEncoderHeaders := response.GetChunkedEncodingHeaders()
+
+		w.WriteStatusLine(response.StatusOk)
+		chunkedEncoderHeaders.Set("Trailer", "X-Content-SHA256")
+		chunkedEncoderHeaders.Set("Trailer", " X-Content-Length")
+		w.WriteHeaders(chunkedEncoderHeaders)
+
+		fullResponseBody := []byte{}
+		for {
+			b := make([]byte, 32)
+			n, err := res.Body.Read(b)
+			if n > 0 {
+				w.WriteChunkedBody(b[:n])
+				fullResponseBody = append(fullResponseBody, b[:n]...)
+			}
+
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				return
+			}
+		}
+
+		w.WriteChunkedBodyDone()
+		bodyHash := sha256.Sum256(fullResponseBody)
+		bodyLen := len(fullResponseBody)
+
+		trailers := headers.NewHeaders()
+		trailers.Set("X-Content-SHA256", fmt.Sprintf("%x", bodyHash))
+		trailers.Set("X-Content-Length", fmt.Sprint(bodyLen))
+		w.WriteTrailers(trailers)
+	}
 }
 
 func main() {
