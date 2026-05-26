@@ -1,28 +1,43 @@
 package server
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net"
+
+	"github.com/rohit-Jung/http-protocol/internal/request"
+	"github.com/rohit-Jung/http-protocol/internal/response"
 )
 
-type Server struct {
-	lsnr net.Listener
+type HandlerError struct {
+	StatusCode response.StatusCode
+	Message    string
 }
 
-func newServer(lsnr net.Listener) *Server {
+type Handler func(w io.Writer, req *request.Request) *HandlerError
+
+type (
+	Server struct {
+		lsnr    net.Listener
+		handler Handler
+	}
+)
+
+func newServer(lsnr net.Listener, handler Handler) *Server {
 	return &Server{
-		lsnr: lsnr,
+		lsnr,
+		handler,
 	}
 }
 
-func Serve(port int) (*Server, error) {
+func Serve(port int, handler Handler) (*Server, error) {
 	lsnr, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, err
 	}
 
-	server := newServer(lsnr)
+	server := newServer(lsnr, handler)
 	go server.listen()
 
 	return server, nil
@@ -45,8 +60,29 @@ func (s *Server) listen() {
 	}
 }
 
+func WriteResponse(conn io.ReadWriteCloser, statusCode response.StatusCode, message []byte) {
+	response.WriteStatusLine(conn, statusCode)
+	headers := response.GetDefaultHeaders(len(message))
+	response.WriteHeaders(conn, headers)
+	conn.Write(message)
+}
+
 func (s *Server) handle(conn io.ReadWriteCloser) {
-	msg := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello World!")
-	conn.Write(msg)
-	conn.Close()
+	defer conn.Close()
+
+	req, err := request.RequestFromReader(conn)
+	if err != nil {
+		WriteResponse(conn, response.StatusBadRequst, []byte(""))
+		return
+	}
+
+	buffer := bytes.NewBuffer([]byte{})
+	handlerErr := s.handler(buffer, req)
+	if handlerErr != nil {
+		WriteResponse(conn, handlerErr.StatusCode, []byte(handlerErr.Message))
+		return
+	}
+
+	body := buffer.Bytes()
+	WriteResponse(conn, response.StatusOk, body)
 }
