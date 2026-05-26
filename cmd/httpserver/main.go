@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -14,22 +14,71 @@ import (
 
 const PORT = 42069
 
-func handlePath(w io.Writer, req *request.Request) *server.HandlerError {
+func getHtml(statusCode response.StatusCode) string {
+	switch statusCode {
+	case response.StatusBadRequst:
+		return `
+		<html>
+			<head>
+				<title>400 Bad Request</title>
+			</head>
+			<body>
+				<h1>Bad Request</h1>
+				<p>Your request honestly kinda sucked.</p>
+			</body>
+		</html>
+		`
+	case response.StatusInternalServerError:
+		return `
+		<html>
+			<head>
+				<title>500 Internal Server Error</title>
+			</head>
+			<body>
+				<h1>Internal Server Error</h1>
+				<p>Okay, you know what? This one is on me.</p>
+			</body>
+		</html>
+		`
+
+	case response.StatusOk:
+		return `
+			<html>
+				<head>
+					<title>200 OK</title>
+				</head>
+				<body>
+					<h1>Success!</h1>
+					<p>Your request was an absolute banger.</p>
+				</body>
+			</html>
+		`
+	default:
+		return ""
+	}
+}
+
+// server will error out if written in wrong order
+func writeResponse(w response.Writer, statusCode response.StatusCode, message string) {
+	headers := response.GetDefaultHeaders(len(message))
+	w.WriteStatusLine(statusCode)
+	headers["Content-Type"] = "text/html"
+	w.WriteHeaders(headers)
+	w.WriteBody([]byte(message))
+}
+
+func handlePath(w response.Writer, req *request.Request) {
+	statusCode := response.StatusOk
+
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
-		return &server.HandlerError{
-			StatusCode: response.StatusBadRequst,
-			Message:    "Your problem is not my problem\n",
-		}
+		statusCode = response.StatusBadRequst
 	case "/myproblem":
-		return &server.HandlerError{
-			StatusCode: response.StatusInternalServerError,
-			Message:    "Woopsie, my bad\n",
-		}
-	default:
-		w.Write([]byte("All good, frfr\n"))
-		return nil
+		statusCode = response.StatusInternalServerError
 	}
+
+	html := getHtml(statusCode)
+	writeResponse(w, statusCode, html)
 }
 
 func main() {
