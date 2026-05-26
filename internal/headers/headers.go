@@ -23,6 +23,25 @@ func (h Headers) Get(key string) (string, bool) {
 	return "", false
 }
 
+func (h Headers) Set(fieldName string, fieldValue string) {
+	name := strings.ToLower(fieldName)
+	if val, ok := h[name]; ok {
+		h[name] = val + "," + fieldValue
+	} else {
+		h[name] = fieldValue
+	}
+}
+
+func (h Headers) Replace(fieldName string, fieldValue string) {
+	name := strings.ToLower(fieldName)
+	h[name] = fieldValue
+}
+
+func (h Headers) Delete(fieldName string) {
+	name := strings.ToLower(fieldName)
+	delete(h, name)
+}
+
 func (h Headers) GetIntVal(key string, defaultVal int) int {
 	val, exists := h.Get(key)
 	if !exists {
@@ -72,15 +91,6 @@ func parseSingleFieldLine(fieldLine []byte) (string, string, error) {
 	return strings.ToLower(cleanedFieldName), cleanedFieldVal, nil
 }
 
-func (h Headers) MutateHeaders(fieldName string, fieldValue string) {
-	name := strings.ToLower(fieldName)
-	if val, ok := h[name]; ok {
-		h[name] = val + "," + fieldValue
-	} else {
-		h[name] = fieldValue
-	}
-}
-
 func (h Headers) Parse(data []byte) (int, bool, error) {
 	bytesRead := 0
 	doneParsing := false
@@ -104,7 +114,7 @@ func (h Headers) Parse(data []byte) (int, bool, error) {
 			return bytesRead, doneParsing, err
 		}
 
-		h.MutateHeaders(fieldName, fieldValue)
+		h.Set(fieldName, fieldValue)
 		bytesRead += indexOfCrlf + len([]byte(CRLF))
 	}
 
