@@ -20,7 +20,7 @@ import (
 
 const PORT = 42069
 
-func getHtml(statusCode response.StatusCode) string {
+func getHTML(statusCode response.StatusCode) string {
 	switch statusCode {
 	case response.StatusBadRequst:
 		return `
@@ -65,12 +65,12 @@ func getHtml(statusCode response.StatusCode) string {
 }
 
 // server will error out if written in wrong order
-func writeResponse(w response.Writer, statusCode response.StatusCode, message string) {
+func writeResponse(w response.Writer, statusCode response.StatusCode, message string, contentType string) {
 	headers := response.GetDefaultHeaders(len(message))
 	w.WriteStatusLine(statusCode)
-	headers.Replace("Content-Type", "text/html")
-
+	headers.Replace("Content-Type", contentType)
 	w.WriteHeaders(headers)
+
 	w.WriteBody([]byte(message))
 }
 
@@ -80,13 +80,24 @@ func handlePath(w response.Writer, req *request.Request) {
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
 		statusCode = response.StatusBadRequst
-		html := getHtml(statusCode)
-		writeResponse(w, statusCode, html)
+		html := getHTML(statusCode)
+		writeResponse(w, statusCode, html, "text/html")
 		return
 	case "/myproblem":
 		statusCode = response.StatusInternalServerError
-		html := getHtml(statusCode)
-		writeResponse(w, statusCode, html)
+		html := getHTML(statusCode)
+		writeResponse(w, statusCode, html, "text/html")
+		return
+	case "/video":
+		video, err := os.ReadFile("assets/vim.mp4")
+		if err != nil {
+			fmt.Print(err)
+			statusCode = response.StatusInternalServerError
+			html := getHTML(statusCode)
+			writeResponse(w, statusCode, html, "text/html")
+		}
+
+		writeResponse(w, statusCode, string(video), "video/mp4")
 		return
 	}
 
@@ -97,8 +108,8 @@ func handlePath(w response.Writer, req *request.Request) {
 		res, err := http.Get(endPoint)
 		if err != nil {
 			statusCode = response.StatusInternalServerError
-			html := getHtml(statusCode)
-			writeResponse(w, statusCode, html)
+			html := getHTML(statusCode)
+			writeResponse(w, statusCode, html, "text/html")
 		}
 
 		defer res.Body.Close()
